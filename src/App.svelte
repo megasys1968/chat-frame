@@ -3,9 +3,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  interface MessageNode {
+    text: string;
+    link?: string;
+  }
+
   interface ChatMessage {
-    text?: string;
-    answer?: string;
+    nodes?: MessageNode[];
     isSend?: boolean;
   }
 
@@ -14,6 +18,8 @@
     message: string;
     nodes?: ScenarioNode[];
   }
+
+  const SCENARIO_ROOT_PATH = '';
 
   export let title = 'チャットボット'
   export let opened = false;
@@ -30,19 +36,20 @@
   let sendText: string;
   let hostElement: Element;
   let topElement: HTMLElement;
-  let scenarioMap: {[key: string]: string} = {};
+  let scenarioMap: {[key: string]: MessageNode[]} = {};
 
   onMount(async () => {
     hostElement =  (topElement.parentNode as ShadowRoot).host;
     modifyCustomElementClass();
 
     if (scenariourl) {
-      console.log('シナリオ取得');
+      // 問合せカテゴリを取得
       const res = await fetch(scenariourl, { headers: { 'Content-Type': 'text/json' } });
       let scenario = await res.json();
+      // 問合せカテゴリを表示用に変換
       convertScenario(scenario);
-      messages = [...messages, { text: scenarioMap['']}]
-      console.log(JSON.stringify(messages));
+      // 最初のカテゴリ選択肢を表示
+      onSelectScenarioNode(SCENARIO_ROOT_PATH);
     }
   });
 
@@ -60,7 +67,8 @@
 
   function onSend() {
     console.log('送信');
-    messages = [...messages, { text: sendText, isSend: true}]
+    messages = [...messages, { nodes: [{ text: sendText}], isSend: true}]
+    messages = [...messages, { nodes: [ { text: 'ごめん、わからないや。' } ]}];
   }
 
   function onKeyupEvent(event: KeyboardEvent): void {
@@ -71,40 +79,44 @@
     }
   }
 
-
   function convertScenario(scenario: ScenarioNode, parentPath: string = '') {
 
     let currentPath: string = null;
-    if ((parentPath?.length ?? 0) === 0) {
-      if ((scenario.id?.length ?? 0) === 0) {
-        currentPath = '';
-      } else {
-        currentPath = `/${scenario.id}`;
-      }
+    // ルートのカテゴリ選択肢なら?
+    if (((parentPath?.length ?? 0) === 0)
+      && ((scenario.id?.length ?? 0) === 0)) {
+      currentPath = SCENARIO_ROOT_PATH;
     } else {
       console.assert(0 < scenario.id.length, '子ノードはidあり', scenario)
       currentPath = `${parentPath}/${scenario.id}`;
     }
 
-    [...scenario.message.matchAll(/\{\{(.+?)\}\}/g)]
-      .forEach(match => {
-        let childId = match[1];
-        console.log(`childId:${childId}`);
-        let childNodePath = `${currentPath}/${childId}`;
-        scenario.message = scenario.message.replace(`{{${childId}}}`, `<a href="javascript:void(0);" onClick="onSelectScenarioNode('${childNodePath}')">${childId}</a>`)
+    let msgNodes: MessageNode[] = [];
+    [...scenario.message.split(/(\{\{.+?\}\})/g)]
+      .forEach(splitted => {
+
+        let matchResult = splitted.match(/^\{\{(.+?)\}\}$/)
+        if (matchResult) {
+          let childId = matchResult[1];
+          console.log(`childId:${childId}`);
+          let childNodePath = `${currentPath}/${childId}`;
+          msgNodes.push({ text: childId, link: childNodePath } );
+        } else {
+          msgNodes.push({ text: splitted });
+        }
       })
-
-    scenarioMap[currentPath] = scenario.message;
-
-
+    scenarioMap[currentPath] = msgNodes;
     scenario.nodes?.forEach(node => convertScenario(node, currentPath))
   }
 
-  // TODO 要改善
-  window.onSelectScenarioNode = function(nodePath: string) {
-    messages = [...messages, { text: scenarioMap[nodePath]}]
+  function onSelectScenarioNode(nodePath: string) {
+    let scenarioNode = scenarioMap[nodePath];
+    if (scenarioNode) {
+      messages = [...messages, { nodes: scenarioNode}];
+    } else {
+      messages = [...messages, { nodes: [ { text: 'ごめん、わからないや。' } ]}];
+    }
   }
-
 </script>
 
 <div bind:this={topElement} />
@@ -118,7 +130,13 @@
 <div part="body">
   {#each messages as msg}
     <div part={msg.isSend ? "receive-message" : "send-message"}>
-      {@html msg.text}
+      {#each msg.nodes as msgNode}
+        {#if msgNode.link}
+          <a href={'#'} on:click={() => onSelectScenarioNode((msgNode).link)}>{@html msgNode.text}</a>
+        {:else}
+          {@html msgNode.text}
+        {/if}
+      {/each}
     </div>
   {/each}
 </div>
