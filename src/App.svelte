@@ -24,6 +24,8 @@
   export let title = 'チャットボット'
   export let opened = false;
   export let scenariourl: string;
+  export let openclass: string = 'open';
+  export let closeclass: string = 'close';
 
   $: {
     opened = !!opened;
@@ -55,8 +57,8 @@
 
   function modifyCustomElementClass() {
     if (hostElement) {
-      hostElement.classList.remove(opened ? 'close' : 'open');
-      hostElement.classList.add(opened ? 'open' : 'close');
+      hostElement.classList.remove(opened ? closeclass : openclass);
+      hostElement.classList.add(opened ? openclass : closeclass);
     }
   }
 
